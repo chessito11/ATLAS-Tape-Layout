@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ATLAS Tape Layout — Prototype 1</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#eaf1fb;background:#101827}
+*{box-sizing:border-box}body{margin:0}header{padding:18px 22px;background:#17243a;border-bottom:1px solid #344761}h1{margin:0;font-size:23px}small,.hint{color:#a9bed5}main{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;padding:16px}.panel{background:#19283c;border:1px solid #354861;border-radius:12px;padding:16px}h2{font-size:16px;margin:0 0 12px}h3{font-size:14px;margin:18px 0 8px;color:#c3d9f2}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}label{display:block;font-size:12px;color:#b9cde4}input,select,button{width:100%;border:1px solid #506782;border-radius:7px;background:#101d2e;color:white;padding:10px;font:inherit}input[type=file]{font-size:12px}button{background:#2a5b86;cursor:pointer}button:hover{background:#3677aa}button.active{background:#16866f;border-color:#72f0cf;box-shadow:0 0 0 2px rgba(114,240,207,.22) inset}button.active::after{content:"  ✓";font-weight:800}button.secondary{background:#293b50}.wide{grid-column:1/-1}canvas{width:100%;height:min(69vh,780px);min-height:430px;display:block;background:#0c1522;border-radius:8px;touch-action:none}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}.stat{background:#102033;border-radius:8px;padding:12px;font-size:13px;overflow-wrap:anywhere}.stat b{display:block;color:#8ee5ef;margin-top:5px;font-size:16px}.status{margin-top:10px;color:#e7c98c;font-size:13px;min-height:35px}.pill{display:inline-block;border-radius:5px;padding:4px 8px;background:#304761;margin:4px 3px 4px 0;font-size:12px}.note{font-size:12px;line-height:1.5;color:#b4c8dc}@media(max-width:850px){main{grid-template-columns:1fr}.stats{grid-template-columns:1fr}canvas{height:55vh;min-height:350px}}
+</style></head>
+<body><header><h1>ATLAS <span style="color:#67d9e6">TAPE LAYOUT</span> <small> / Prototype 1 — V27 geometry base</small></h1><small>Local-only DXF preview • Two tape stations • Trilateration distances • No laser hardware required</small></header>
+<main><section class="panel">
+<h2>1. Drawing</h2>
+<label>DXF file (ASCII DXF; LINE, LWPOLYLINE, POINT)</label><input id="file" type="file" accept=".dxf">
+<div id="saveState" class="note">Project recovery: checking local storage…</div>
+<div class="row"><div><label>Drawing units</label><select id="units"><option value="1">Feet</option><option value=".08333333333333333">Inches</option><option value="3.280839895">Meters</option><option value=".003280839895">Millimeters</option></select></div><div><label>Snap radius (ft)</label><input id="snap" type="number" min="0" step=".1" value=".5"></div></div>
+<p class="note">DXF model coordinates have drawing units (not a printed sheet scale such as 1/4&quot; = 1 ft). Select the likely units, then verify against a dimension shown on the plan. Unsupported entities are skipped.</p>
+<h3>1A. Independent layout points</h3>
+<p class="note">X1 through X5 are field layout targets. They stay editable even while the DXF scale is locked. Select an X and both virtual lasers point to that same coordinate and intersect there. <b>SHIFT:</b> while placing X2–X5, hold Shift to force the new point horizontal or vertical (orthogonal) to the previous X.</p>
+<div class="row"><button id="layoutPoint1" class="secondary">Set X1 by tap</button><button id="layoutPoint2" class="secondary">Set X2 by tap</button></div>
+<div class="row"><button id="layoutPoint3" class="secondary">Set X3 by tap</button><button id="layoutPoint4" class="secondary">Set X4 by tap</button></div>
+<div class="row"><button id="layoutPoint5" class="secondary">Set X5 by tap</button><button id="clearTargets" class="secondary">Clear X1–X5</button></div>
+<div class="row"><div class="stat">X1 coordinate<b id="x1Coord">—</b><small id="x1Distance"></small></div><div class="stat">X2 coordinate<b id="x2Coord">—</b><small id="x2Distance"></small></div></div>
+<div class="row"><div class="stat">X3 coordinate<b id="x3Coord">—</b><small id="x3Distance"></small></div><div class="stat">X4 coordinate<b id="x4Coord">—</b><small id="x4Distance"></small></div></div>
+<div class="row"><div class="stat">X5 coordinate<b id="x5Coord">—</b><small id="x5Distance"></small></div><div class="stat">Selected layout point<b id="selectedX">—</b><small>Both lasers aim here</small></div></div>
+<div class="stat" style="margin-top:8px">X1 ↔ X2 layout dimension<b id="layoutDimension" style="font-size:24px">—</b><small>Field-style dimension between X1 and X2</small></div>
+<div class="row">
+  <div class="stat">X2 ↔ X3 layout dimension<b id="layoutDimension23">—</b></div>
+  <div class="stat">X3 ↔ X4 layout dimension<b id="layoutDimension34">—</b></div>
+</div>
+<div class="row">
+  <div class="stat">X4 ↔ X5 layout dimension<b id="layoutDimension45">—</b></div>
+  <div class="stat">Sequential X dimensions<small>X1–X2 • X2–X3 • X3–X4 • X4–X5</small></div>
+</div>
+<div class="row"><div class="stat">Laser A command<b id="commandA">—</b><small id="commandADetail"></small></div><div class="stat">Laser B command<b id="commandB">—</b><small id="commandBDetail"></small></div></div>
+<div id="targetPairStatus" class="note">Set any layout points you need. X1 ↔ X2 keeps the field dimension check.</div>
+
+<h3>1B. DXF scale calibration</h3>
+<p class="note">CAL 1 and CAL 2 are used only to verify/correct the DXF scale. After scaling, ATLAS locks this calibration. They remain completely separate from X1–X5 above.</p>
+<div class="row"><button id="scalePoint1" class="secondary">Set CAL 1 by tap</button><button id="scalePoint2" class="secondary">Set CAL 2 by tap</button></div>
+<div class="row"><label>Known print dimension (ft)<input id="knownLength" type="number" min="0" step=".001" placeholder="e.g. 20"></label><button id="applyDrawingScale">Scale DXF from CAL 1–CAL 2</button></div>
+<div id="drawingScaleStatus" class="note">No calibration pair selected. Zoom does not change measured dimensions.</div>
+<div class="row"><button id="resetDrawingScale" class="secondary">Reset scale correction</button><button id="cancelScale" class="secondary">Cancel calibration selection</button></div>
+<div class="row"><button id="scaleLock" class="secondary">🔓 Scale unlocked</button></div>
+<h3>2. Station coordinates (feet)</h3>
+<div class="row"><label><input id="stationSnap" type="checkbox" checked style="width:auto;vertical-align:middle"> Snap A/B to geometry</label><label>Snap type<select id="stationSnapType"><option value="end">Endpoints / DXF points</option><option value="mid">Endpoints + midpoints</option></select></label></div>
+<p class="note">When enabled, A and B snap to a nearby DXF endpoint or POINT (and optionally a segment midpoint). Uses the Snap radius above, in feet. Zoom in and check the coordinate/status confirmation. If no geometry is nearby, station placement is rejected rather than silently placing it off the geometry. Uncheck to place a station freely on the floor.</p>
+<div class="row"><label>A — X<input id="ax" type="number" step=".001" value="0"></label><label>A — Y<input id="ay" type="number" step=".001" value="0"></label></div>
+<div class="row"><label>B — X<input id="bx" type="number" step=".001" value="30"></label><label>B — Y<input id="by" type="number" step=".001" value="0"></label></div>
+<div class="row"><button id="placeA" class="secondary">Place A by tap</button><button id="placeB" class="secondary">Place B by tap</button></div>
+<h3>3. Station calibration (virtual)</h3>
+<p class="note">Place A and B at their actual floor marks on the drawing. Compare the drawing baseline with a tape measurement. Set a known zero/reference direction for each station. This does not calibrate physical motors or establish field accuracy.</p>
+<div class="row"><label>Measured A–B (ft)<input id="measuredAB" type="number" min="0" step=".001" placeholder="Tape measurement"></label><label>Allowed difference (ft)<input id="baselineTol" type="number" min="0" step=".001" value=".0833"></label></div>
+<div id="baselineCheck" class="note">Enter the measured A–B baseline to check drawing scale.</div>
+<div class="row"><button id="refA" class="secondary">Tap A reference</button><button id="refB" class="secondary">Tap B reference</button></div>
+<div class="row"><label>A zero direction (drawing °)<input id="zeroA" type="number" step=".001" value="0"></label><label>B zero direction (drawing °)<input id="zeroB" type="number" step=".001" value="0"></label></div>
+<div class="row"><label>A rotation direction<select id="directionA"><option value="1">CCW positive</option><option value="-1">CW positive</option></select></label><label>B rotation direction<select id="directionB"><option value="1">CCW positive</option><option value="-1">CW positive</option></select></label></div>
+<div class="row"><div class="stat">A relative rotation<b id="relativeA">—</b></div><div class="stat">B relative rotation<b id="relativeB">—</b></div></div>
+<div id="calibrationStatus" class="note">Reference directions have not been established.</div>
+<h3>4. Target point (feet)</h3>
+<div class="row"><label>Target X<input id="tx" type="number" step=".001" value="15"></label><label>Target Y<input id="ty" type="number" step=".001" value="20"></label></div>
+<button id="center" class="secondary">Fit drawing & stations</button>
+<h3>5. Wall layout</h3>
+<button id="wallMode">Select wall by tap</button>
+<div class="row"><button id="previous" class="secondary">◀ Previous</button><button id="next" class="secondary">Next ▶</button></div>
+<div class="row"><label>Spacing (ft; 0 = endpoints only)<input id="spacing" type="number" min="0" step=".25" value="0"></label><button id="reverse" class="secondary">Reverse direction</button></div>
+<div id="wallInfo" class="note">Select a wall line to generate its start/end layout points.</div>
+<p class="note">Click or tap the canvas to place A/B after pressing its button; the status message confirms placement. Tap normally to select a target. Tap near a DXF endpoint to snap. Use the station buttons to place virtual stations. Drag to pan; scroll or pinch to zoom.</p>
+<hr style="border:0;border-top:1px solid #344761;margin:18px 0 12px">
+<h3>Project / drawing controls</h3>
+<div class="row"><button id="demo" class="secondary">Load demo walls</button><button id="clear" class="secondary">Clear drawing</button></div>
+<div class="row"><button id="saveNow" class="secondary">Save project now</button><button id="newProject" class="secondary">New / clear saved project</button></div>
+<div id="status" class="status" role="status"></div>
+</section><section class="panel"><h2>Virtual jobsite <span id="mode" class="pill">Select target</span></h2>
+<canvas id="view"></canvas>
+<div style="margin-top:10px;display:grid;grid-template-columns:repeat(6,1fr);gap:7px">
+  <button id="aimX1">X1</button><button id="aimX2">X2</button><button id="aimX3">X3</button>
+  <button id="aimX4">X4</button><button id="aimX5">X5</button><button id="nextX" class="secondary">NEXT</button>
+</div>
+<div class="stats"><div class="stat">TAPE A → selected X<b id="distAValue">—</b><small id="angleA"></small></div><div class="stat">TAPE B → selected X<b id="distBValue">—</b><small id="angleB"></small></div><div class="stat">A–B baseline<b id="intersection">—</b><small id="geometry"></small></div></div>
+<p class="note">Angles are counterclockwise from drawing +X. Angles are shown only as geometric reference; field layout is based on the two tape distances. The cyan and amber lines represent the tape pulls from Station A and Station B to the selected layout point. Station locations and drawing orientation must be established from real control points before field use.</p>
+</section></main>
+<script>
+"use strict";
+const $=id=>document.getElementById(id), cv=$("view"),ctx=cv.getContext("2d");
+let selectedWall=null,wallPoints=[],wallIndex=0,segments=[],points=[],mode="target",scale=16,ox=0,oy=0,drag=null,dragged=false,touches=new Map(),pinch=null;
+let currentDXFText=null,currentDXFName="",projectKind="demo",restoring=false,saveTimer=null,zeroSetA=false,zeroSetB=false;
+let drawingScaleFactor=1,scaleP1=null,scaleP2=null,layoutP1=null,layoutP2=null,layoutP3=null,layoutP4=null,layoutP5=null,scaleVerified=false,scaleLocked=false,aimedX=0;
+let shiftOrtho=false;
+window.addEventListener("keydown",e=>{if(e.key==="Shift"){shiftOrtho=true}});
+window.addEventListener("keyup",e=>{if(e.key==="Shift"){shiftOrtho=false}});
+window.addEventListener("blur",()=>{shiftOrtho=false});
+const num=id=>Number($(id).value), set=(id,v)=>$(id).value=Number(v.toFixed(4));
+const A=()=>({x:num("ax"),y:num("ay")}),B=()=>({x:num("bx"),y:num("by")}),T=()=>({x:num("tx"),y:num("ty")});
+const world=(x,y)=>({x:(x-ox)/scale,y:(oy-y)/scale}),screen=p=>({x:ox+p.x*scale,y:oy-p.y*scale});
+const norm=v=>(v%360+360)%360, bearing=(p,q)=>norm(Math.atan2(q.y-p.y,q.x-p.x)*180/Math.PI);
+const feet=v=>`${v.toFixed(3)} ft`;
+function ftIn(v){
+  if(!Number.isFinite(v)) return "—";
+  const sign=v<0?"-":"", total16=Math.round(Math.abs(v)*12*16);
+  let ft=Math.floor(total16/192), rem=total16-ft*192, inch=Math.floor(rem/16), n=rem%16;
+  let frac="";
+  if(n){let d=16;while(n%2===0){n/=2;d/=2}frac=` ${n}/${d}`}
+  return `${sign}${ft}′-${inch}${frac}″`;
+}
+const deg=v=>`${(v*180/Math.PI+360)%360<0.00005?"0.000":((v*180/Math.PI+360)%360).toFixed(3)}°`;
+const DB_NAME="atlas-layout-recovery",DB_VERSION=1,STORE="projects",PROJECT_KEY="last";
+function openDB(){return new Promise((resolve,reject)=>{let q=indexedDB.open(DB_NAME,DB_VERSION);q.onupgradeneeded=()=>{if(!q.result.objectStoreNames.contains(STORE))q.result.createObjectStore(STORE)};q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)})}
+async function idbPut(value){let db=await openDB();return new Promise((resolve,reject)=>{let tx=db.transaction(STORE,"readwrite");tx.objectStore(STORE).put(value,PROJECT_KEY);tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>{db.close();reject(tx.error)}})}
+async function idbGet(){let db=await openDB();return new Promise((resolve,reject)=>{let tx=db.transaction(STORE,"readonly"),q=tx.objectStore(STORE).get(PROJECT_KEY);q.onsuccess=()=>resolve(q.result||null);q.onerror=()=>reject(q.error);tx.oncomplete=()=>db.close()})}
+async function idbDelete(){let db=await openDB();return new Promise((resolve,reject)=>{let tx=db.transaction(STORE,"readwrite");tx.objectStore(STORE).delete(PROJECT_KEY);tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>{db.close();reject(tx.error)}})}
+const stateIds=["units","snap","ax","ay","bx","by","tx","ty","spacing","measuredAB","baselineTol","zeroA","zeroB","directionA","directionB","knownLength","stationSnapType","stationSnapType"];
+function captureProject(){let values={};for(let id of stateIds)values[id]=$(id).value;values.stationSnap=$("stationSnap").checked;return{version:27,drawingScaleFactor,scaleVerified,scaleLocked,scaleP1,scaleP2,layoutP1,layoutP2,layoutP3,layoutP4,layoutP5,zeroSetA,zeroSetB,kind:projectKind,dxfText:currentDXFText,dxfName:currentDXFName,values,view:{scale,ox,oy},selectedWall:selectedWall?{a:selectedWall.a,b:selectedWall.b}:null,wallIndex,savedAt:new Date().toISOString()}}
+async function saveProject(show=false){if(restoring)return;try{await idbPut(captureProject());$("saveState").textContent="Saved locally on this iPad • "+new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit"});if(show)status("Project saved locally on this iPad.")}catch(err){$("saveState").textContent="Local save failed: "+err.message;if(show)status("Could not save project locally: "+err.message)}}
+function scheduleSave(){if(restoring)return;clearTimeout(saveTimer);saveTimer=setTimeout(()=>saveProject(false),350)}
+async function restoreProject(saved){restoring=true;try{drawingScaleFactor=Number(saved.drawingScaleFactor)||1;scaleVerified=!!saved.scaleVerified;scaleLocked=!!saved.scaleLocked;scaleP1=saved.scaleP1||null;scaleP2=saved.scaleP2||null;layoutP1=saved.layoutP1||null;layoutP2=saved.layoutP2||null;layoutP3=saved.layoutP3||null;layoutP4=saved.layoutP4||null;layoutP5=saved.layoutP5||null;zeroSetA=!!saved.zeroSetA;zeroSetB=!!saved.zeroSetB;if(saved.values)for(let [id,v] of Object.entries(saved.values))if($(id)){if(id==="stationSnap")$(id).checked=!!v;else $(id).value=v;}projectKind=saved.kind||"demo";currentDXFText=saved.dxfText||null;currentDXFName=saved.dxfName||"";if(projectKind==="dxf"&&currentDXFText){let r=parseDXF(currentDXFText,num("units")*drawingScaleFactor);segments=r.seg;points=r.pts}else if(projectKind==="blank"){segments=[];points=[]}else loadDemo(false);selectedWall=saved.selectedWall||null;wallPoints=[];wallIndex=0;if(selectedWall){let wanted=Math.max(0,Number(saved.wallIndex)||0);makeWall();wallIndex=Math.min(wanted,wallPoints.length-1);if(wallPoints.length)goWall()}if(saved.view&&Number.isFinite(saved.view.scale)&&saved.view.scale>0){scale=saved.view.scale;ox=Number(saved.view.ox)||0;oy=Number(saved.view.oy)||0}else fit();draw();updateDrawingScaleStatus();$("saveState").textContent="Recovered local project"+(currentDXFName?" • "+currentDXFName:"");status("Recovered your last "+(currentDXFName||"ATLAS")+" project from this iPad.")}finally{restoring=false}}
+
+function status(s){$("status").textContent=s}
+function clearActiveButtons(){["scalePoint1","scalePoint2","layoutPoint1","layoutPoint2","layoutPoint3","layoutPoint4","layoutPoint5","placeA","placeB","wallMode","refA","refB"].forEach(id=>$(id)?.classList.remove("active"))}
+function activateButton(id){clearActiveButtons();$(id)?.classList.add("active")}
+function finishMode(){clearActiveButtons()}
+
+function updateScaleLockUI(){
+  let b=$("scaleLock");
+  if(!b)return;
+  b.textContent=scaleLocked?"🔒 SCALE LOCKED":"🔓 Scale unlocked";
+  b.classList.toggle("active",scaleLocked);
+  for(let id of ["scalePoint1","scalePoint2","knownLength","applyDrawingScale","resetDrawingScale","cancelScale"]){
+    let el=$(id); if(el) el.disabled=scaleLocked;
+  }
+}
+function updateDrawingScaleStatus(){let msg="Scale correction: ×"+drawingScaleFactor.toFixed(8)+(scaleVerified?" • set from known dimension":" • NOT verified against a dimension");if(scaleP1&&scaleP2)msg+=" • CAL distance: "+ftIn(Math.hypot(scaleP2.x-scaleP1.x,scaleP2.y-scaleP1.y));else if(scaleP1)msg+=" • CAL 1 selected; set CAL 2";msg+=scaleLocked?" • 🔒 LOCKED":" • unlocked";$("drawingScaleStatus").textContent=msg;updateScaleLockUI()}
+function layoutPoint(n){return [null,layoutP1,layoutP2,layoutP3,layoutP4,layoutP5][n]||null}
+function orthoLayoutPoint(n,p){
+  if(!shiftOrtho||n<=1)return p;
+  let prev=layoutPoint(n-1);if(!prev)return p;
+  let dx=Math.abs(p.x-prev.x),dy=Math.abs(p.y-prev.y);
+  return dx>=dy?{x:p.x,y:prev.y}:{x:prev.x,y:p.y};
+}
+function updateTargetPair(){
+  let a=A(),b=B(),target=layoutPoint(aimedX);
+  for(let n=1;n<=5;n++){
+    let p=layoutPoint(n), c=$("x"+n+"Coord"), d=$("x"+n+"Distance");
+    if(c)c.textContent=p?`X ${ftIn(p.x)} • Y ${ftIn(p.y)}`:"—";
+    if(d)d.textContent=p?ftIn(Math.hypot(p.x-a.x,p.y-a.y))+" from A":"";
+  }
+  $("selectedX").textContent=target?"X"+aimedX:"—";
+  $("layoutDimension").textContent=(layoutP1&&layoutP2)?ftIn(Math.hypot(layoutP2.x-layoutP1.x,layoutP2.y-layoutP1.y)):"—";
+  $("layoutDimension23").textContent=(layoutP2&&layoutP3)?ftIn(Math.hypot(layoutP3.x-layoutP2.x,layoutP3.y-layoutP2.y)):"—";
+  $("layoutDimension34").textContent=(layoutP3&&layoutP4)?ftIn(Math.hypot(layoutP4.x-layoutP3.x,layoutP4.y-layoutP3.y)):"—";
+  $("layoutDimension45").textContent=(layoutP4&&layoutP5)?ftIn(Math.hypot(layoutP5.x-layoutP4.x,layoutP5.y-layoutP4.y)):"—";
+  if(target){
+    let da=Math.hypot(target.x-a.x,target.y-a.y),db=Math.hypot(target.x-b.x,target.y-b.y);
+    $("commandA").textContent=norm((bearing(a,target)-num("zeroA"))*num("directionA")).toFixed(3)+"°";
+    $("commandB").textContent=norm((bearing(b,target)-num("zeroB"))*num("directionB")).toFixed(3)+"°";
+    $("commandADetail").textContent=ftIn(da)+" to X"+aimedX;$("commandBDetail").textContent=ftIn(db)+" to X"+aimedX;
+  }else{$("commandA").textContent="—";$("commandB").textContent="—";$("commandADetail").textContent="";$("commandBDetail").textContent=""}
+  $("targetPairStatus").textContent=(layoutP1&&layoutP2)?`X1 ↔ X2 = ${ftIn(Math.hypot(layoutP2.x-layoutP1.x,layoutP2.y-layoutP1.y))}${target?" • BOTH lasers aimed at X"+aimedX:""}`:(target?"BOTH lasers aimed at X"+aimedX:"Set the layout points you need.");
+}
+function rescaleProject(ratio){if(!Number.isFinite(ratio)||ratio<=0)throw Error("Invalid correction");for(let segment of segments){segment.a.x*=ratio;segment.a.y*=ratio;segment.b.x*=ratio;segment.b.y*=ratio}for(let p of points){p.x*=ratio;p.y*=ratio}for(let id of ["ax","ay","bx","by","tx","ty","spacing","snap","measuredAB","baselineTol"]){if($(id).value.trim()!=="")set(id,num(id)*ratio)}if(selectedWall){selectedWall.a.x*=ratio;selectedWall.a.y*=ratio;selectedWall.b.x*=ratio;selectedWall.b.y*=ratio}if(scaleP1){scaleP1.x*=ratio;scaleP1.y*=ratio}if(scaleP2){scaleP2.x*=ratio;scaleP2.y*=ratio}if(layoutP1){layoutP1.x*=ratio;layoutP1.y*=ratio}if(layoutP2){layoutP2.x*=ratio;layoutP2.y*=ratio}if(layoutP3){layoutP3.x*=ratio;layoutP3.y*=ratio}if(layoutP4){layoutP4.x*=ratio;layoutP4.y*=ratio}if(layoutP5){layoutP5.x*=ratio;layoutP5.y*=ratio}drawingScaleFactor*=ratio;if(selectedWall){let old=wallIndex;makeWall();wallIndex=Math.min(old,wallPoints.length-1);if(wallPoints.length)goWall()}fit();updateDrawingScaleStatus();scheduleSave()}
+
+function size(){let r=cv.getBoundingClientRect(),d=Math.min(window.devicePixelRatio||1,1.5);cv.width=Math.round(r.width*d);cv.height=Math.round(r.height*d);ctx.setTransform(d,0,0,d,0,0);draw()}
+function fit(){let minx=Infinity,maxx=-Infinity,miny=Infinity,maxy=-Infinity;function add(p){if(!p)return;minx=Math.min(minx,p.x);maxx=Math.max(maxx,p.x);miny=Math.min(miny,p.y);maxy=Math.max(maxy,p.y)}[A(),B(),T()].forEach(add);for(let s of segments){add(s.a);add(s.b)}for(let p of points)add(p);let w=cv.clientWidth,h=cv.clientHeight,pad=48;scale=Math.max(.01,Math.min((w-2*pad)/Math.max(maxx-minx,5),(h-2*pad)/Math.max(maxy-miny,5)));ox=w/2-(minx+maxx)/2*scale;oy=h/2+(miny+maxy)/2*scale;draw();scheduleSave()}
+function line(p,q,color,width=1,dash=[]){let a=screen(p),b=screen(q);ctx.beginPath();ctx.setLineDash(dash);ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=color;ctx.lineWidth=width;ctx.stroke();ctx.setLineDash([])}
+function mark(p,label,color){let s=screen(p);ctx.beginPath();ctx.arc(s.x,s.y,6,0,2*Math.PI);ctx.fillStyle=color;ctx.fill();ctx.font="bold 13px system-ui";ctx.fillText(label,s.x+9,s.y-9)}
+function calibration(){
+let a=A(),b=B(),t=T(),baseline=Math.hypot(b.x-a.x,b.y-a.y),entry=$("measuredAB").value.trim(),measured=num("measuredAB"),tol=num("baselineTol");
+$("baselineCheck").textContent=!entry?"Drawing A–B: "+ftIn(baseline)+" • Enter tape-measured A–B to compare.":(!Number.isFinite(measured)||measured<=0||!Number.isFinite(tol)||tol<0?"Enter a positive measured baseline and nonnegative tolerance.":"Drawing A–B: "+ftIn(baseline)+" • Measured: "+ftIn(measured)+" • Difference: "+ftIn(Math.abs(baseline-measured))+" • "+(Math.abs(baseline-measured)<=tol?"WITHIN entered tolerance":"OUTSIDE tolerance — check DXF units and station locations"));
+$("relativeA").textContent=Math.hypot(t.x-a.x,t.y-a.y)>1e-8?norm((bearing(a,t)-num("zeroA"))*num("directionA")).toFixed(3)+"°":"Undefined";
+$("relativeB").textContent=Math.hypot(t.x-b.x,t.y-b.y)>1e-8?norm((bearing(b,t)-num("zeroB"))*num("directionB")).toFixed(3)+"°":"Undefined";
+$("calibrationStatus").textContent="A: "+(zeroSetA?"reference selected":"zero not established")+" • B: "+(zeroSetB?"reference selected":"zero not established")+". These are virtual drawing-relative rotations, not motor commands.";
+}
+function draw(){let w=cv.clientWidth,h=cv.clientHeight;ctx.clearRect(0,0,w,h);if(!w||!h)return;calibration();updateTargetPair();
+let x0=Math.floor(world(0,0).x/5)*5,x1=Math.ceil(world(w,0).x/5)*5,y0=Math.floor(world(0,h).y/5)*5,y1=Math.ceil(world(0,0).y/5)*5;
+if((x1-x0)/5<300&&(y1-y0)/5<300){for(let x=x0;x<=x1;x+=5)line({x,y:y0},{x,y:y1},"#223347");for(let y=y0;y<=y1;y+=5)line({x:x0,y},{x:x1,y},"#223347")}
+line({x:x0,y:0},{x:x1,y:0},"#45627a");line({x:0,y:y0},{x:0,y:y1},"#45627a");
+let loX=world(0,0).x,hiX=world(w,0).x,loY=world(0,h).y,hiY=world(0,0).y;
+for(let s of segments){if(Math.max(s.a.x,s.b.x)<loX||Math.min(s.a.x,s.b.x)>hiX||Math.max(s.a.y,s.b.y)<loY||Math.min(s.a.y,s.b.y)>hiY)continue;line(s.a,s.b,"#a7b8cc",1.4)}
+for(let p of points){if(p.x>=loX&&p.x<=hiX&&p.y>=loY&&p.y<=hiY)mark(p,"","#9ab2c9")}
+if(selectedWall){line(selectedWall.a,selectedWall.b,"#55ef9b",3);wallPoints.forEach((p,i)=>mark(p,String(i+1),i===wallIndex?"#ff6687":"#55ef9b"))}
+if(scaleP1)mark(scaleP1,"CAL1","#ffe66d");if(scaleP2){line(scaleP1,scaleP2,"#ffe66d",1.8,[6,5]);mark(scaleP2,"CAL2","#ffe66d");let aa=screen(scaleP1),bb=screen(scaleP2),mx=(aa.x+bb.x)/2,my=(aa.y+bb.y)/2,label="CAL "+ftIn(Math.hypot(scaleP2.x-scaleP1.x,scaleP2.y-scaleP1.y));ctx.save();ctx.font="bold 13px system-ui";let tw=ctx.measureText(label).width;ctx.fillStyle="#0c1522";ctx.fillRect(mx-tw/2-6,my-19,tw+12,24);ctx.fillStyle="#ffe66d";ctx.textAlign="center";ctx.fillText(label,mx,my-2);ctx.restore()}
+if(layoutP1)mark(layoutP1,"X1","#ff6687");
+if(layoutP3)mark(layoutP3,"X3","#ff6687");if(layoutP4)mark(layoutP4,"X4","#ff6687");if(layoutP5)mark(layoutP5,"X5","#ff6687");
+function drawLayoutDim(p1,p2){
+  if(!p1||!p2)return;
+  line(p1,p2,"#ff6687",2,[7,5]);
+  let aa=screen(p1),bb=screen(p2),mx=(aa.x+bb.x)/2,my=(aa.y+bb.y)/2;
+  let label=ftIn(Math.hypot(p2.x-p1.x,p2.y-p1.y));
+  ctx.save();ctx.font="bold 15px system-ui";let tw=ctx.measureText(label).width;
+  ctx.fillStyle="#0c1522";ctx.fillRect(mx-tw/2-6,my-19,tw+12,24);
+  ctx.fillStyle="#ff6687";ctx.textAlign="center";ctx.fillText(label,mx,my-2);ctx.restore();
+}
+if(layoutP2){
+  mark(layoutP2,"X2","#ff6687");
+  if(layoutP1){
+    line(layoutP1,layoutP2,"#ff6687",2,[7,5]);
+    let aa=screen(layoutP1),bb=screen(layoutP2),mx=(aa.x+bb.x)/2,my=(aa.y+bb.y)/2;
+    let label=ftIn(Math.hypot(layoutP2.x-layoutP1.x,layoutP2.y-layoutP1.y));
+    ctx.save();ctx.font="bold 15px system-ui";let tw=ctx.measureText(label).width;
+    ctx.fillStyle="#0c1522";ctx.fillRect(mx-tw/2-6,my-19,tw+12,24);
+    ctx.fillStyle="#ff6687";ctx.textAlign="center";ctx.fillText(label,mx,my-2);ctx.restore();
+  }
+}
+drawLayoutDim(layoutP2,layoutP3);
+drawLayoutDim(layoutP3,layoutP4);
+drawLayoutDim(layoutP4,layoutP5);
+let a=A(),b=B(),t=T(),aimTarget=layoutPoint(aimedX),ta=aimTarget||t,tb=aimTarget||t,da=Math.hypot(ta.x-a.x,ta.y-a.y),db=Math.hypot(tb.x-b.x,tb.y-b.y);
+line(a,ta,"#5ce3e7",2.8);line(b,tb,"#ffbd66",2.8);mark(a,"A","#5ce3e7");mark(b,"B","#ffbd66");if(!aimTarget)mark(t,"X","#ff6687");
+$("distAValue").textContent=ftIn(da);$("distBValue").textContent=ftIn(db);
+$("angleA").textContent=da>1e-8?"Bearing "+deg(Math.atan2(ta.y-a.y,ta.x-a.x)):"Target at A";
+$("angleB").textContent=db>1e-8?"Bearing "+deg(Math.atan2(tb.y-b.y,tb.x-b.x)):"Target at B";
+let baseline=Math.hypot(b.x-a.x,b.y-a.y);$("intersection").textContent=ftIn(baseline);
+let ux=(ta.x-a.x)/da,uy=(ta.y-a.y)/da,vx=(tb.x-b.x)/db,vy=(tb.y-b.y)/db;
+let sine=Math.abs(ux*vy-uy*vx),cross=Math.asin(Math.min(1,sine))*180/Math.PI;
+$("geometry").textContent=!isFinite(sine)?"Target at station":sine<.17?"Weak tape intersection geometry ("+cross.toFixed(1)+"° acute)":`Tape intersection angle: ${cross.toFixed(1)}°`;
+}
+function dimensionEndpoint(p){
+// Use actual DXF vertices, never a fallback freehand tap. Minimum 20px hit area for iPad.
+let radius=Math.max(20/Math.max(scale,.00001),Math.max(0,num("snap"))),best=null,d=radius;
+for(let q of points){let z=Math.hypot(p.x-q.x,p.y-q.y);if(z<=d){d=z;best=q}}
+for(let seg of segments)for(let q of [seg.a,seg.b]){let z=Math.hypot(p.x-q.x,p.y-q.y);if(z<=d){d=z;best=q}}
+return best?{x:best.x,y:best.y}:null;
+}
+function closest(p){let snap=num("snap"),best=null,d=snap;for(let q of points){let z=Math.hypot(p.x-q.x,p.y-q.y);if(z<=d){d=z;best=q}}for(let s of segments)for(let q of [s.a,s.b]){let z=Math.hypot(p.x-q.x,p.y-q.y);if(z<=d){d=z;best=q}}return best||p}
+function snapStation(p){
+let radius=num("snap"),best=null,d=radius,kind="";
+if(!Number.isFinite(radius)||radius<0)return null;
+for(let q of points){let z=Math.hypot(p.x-q.x,p.y-q.y);if(z<=d){d=z;best=q;kind="DXF point"}}
+for(let seg of segments){for(let q of [seg.a,seg.b]){let z=Math.hypot(p.x-q.x,p.y-q.y);if(z<=d){d=z;best=q;kind="endpoint"}}
+if($("stationSnapType").value==="mid"){let q={x:(seg.a.x+seg.b.x)/2,y:(seg.a.y+seg.b.y)/2},z=Math.hypot(p.x-q.x,p.y-q.y);if(z<=d){d=z;best=q;kind="midpoint"}}}
+return best?{point:{x:best.x,y:best.y},kind,distance:d}:null;
+}
+function selectWall(p){let best=null,dist=14;let tap=screen(p);for(let s of segments){let a=screen(s.a),b=screen(s.b),vx=b.x-a.x,vy=b.y-a.y,len=vx*vx+vy*vy;if(len<.01)continue;let t=Math.max(0,Math.min(1,((tap.x-a.x)*vx+(tap.y-a.y)*vy)/len));let d=Math.hypot(tap.x-a.x-t*vx,tap.y-a.y-t*vy);if(d<dist){dist=d;best=s}}if(!best){status("No wall line near tap. Zoom in and tap closer to a line.");return}selectedWall=best;makeWall();mode="target";$('mode').textContent="Select target";status("Wall selected. Use NEXT / PREVIOUS.")}
+function makeWall(){if(!selectedWall)return;let a=selectedWall.a,b=selectedWall.b,length=Math.hypot(b.x-a.x,b.y-a.y),spacing=num("spacing");wallPoints=[a];if(spacing>0&&length>0){let count=Math.min(500,Math.floor((length-1e-8)/spacing));for(let i=1;i<=count;i++){let t=i*spacing/length;wallPoints.push({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t})}}wallPoints.push(b);wallIndex=0;goWall()}
+function goWall(){if(!wallPoints.length)return;let p=wallPoints[wallIndex];set("tx",p.x);set("ty",p.y);$('wallInfo').textContent=`Point ${wallIndex+1} of ${wallPoints.length} • Segment length ${ftIn(Math.hypot(selectedWall.b.x-selectedWall.a.x,selectedWall.b.y-selectedWall.a.y))}`;draw()}
+function choose(p){if(mode==="refA"||mode==="refB"){
+let isA=mode==="refA",station=isA?A():B();p=closest(p);
+if(Math.hypot(p.x-station.x,p.y-station.y)<1e-8){status("Reference must be different from station location.");return}
+$(isA?"zeroA":"zeroB").value=bearing(station,p).toFixed(4);
+if(isA)zeroSetA=true;else zeroSetB=true;
+mode="target";$("mode").textContent="Select target";status("Reference for station "+(isA?"A":"B")+" saved. Physically align the station zero with that same known point.");draw();scheduleSave();return}
+if(mode==="scaleP1"||mode==="scaleP2"){
+if(projectKind!=="dxf"){status("Load a DXF before setting drawing scale.");mode="target";$("mode").textContent="Select target";return}
+let snapped=dimensionEndpoint(p);
+if(!snapped){status("No DXF endpoint near tap. Zoom in and tap a line endpoint; try a higher snap radius.");return}
+if(mode==="scaleP1"){
+scaleP1=snapped;scaleP2=null;
+status("CAL 1 SET. Now press Set CAL 2 by tap.");
+}else{
+if(!scaleP1){status("Select dimension point 1 first.");return}
+if(Math.hypot(snapped.x-scaleP1.x,snapped.y-scaleP1.y)<1e-8){status("Point 2 must be different from point 1. Tap the other endpoint.");return}
+scaleP2=snapped;status("CAL 2 SET • "+ftIn(Math.hypot(scaleP2.x-scaleP1.x,scaleP2.y-scaleP1.y))+" between CAL 1 and CAL 2. Enter the known print dimension, then scale/lock the DXF.");
+}
+mode="target";finishMode();$("mode").textContent="Select target";updateDrawingScaleStatus();draw();scheduleSave();return}
+
+if(/^layoutP[1-5]$/.test(mode)){
+  if(projectKind!=="dxf"){status("Load a DXF before setting layout points.");return}
+  let snapped=dimensionEndpoint(p);if(!snapped){status("No DXF endpoint near tap. Zoom in and tap the layout coordinate.");return}
+  let n=Number(mode.slice(-1)),pt=orthoLayoutPoint(n,{x:snapped.x,y:snapped.y});
+  if(n===1)layoutP1=pt;else if(n===2)layoutP2=pt;else if(n===3)layoutP3=pt;else if(n===4)layoutP4=pt;else layoutP5=pt;
+  status("X"+n+" layout point saved."+(shiftOrtho&&n>1?" SHIFT ORTHO — aligned "+(Math.abs(snapped.x-layoutPoint(n-1).x)>=Math.abs(snapped.y-layoutPoint(n-1).y)?"horizontal":"vertical")+" to X"+(n-1)+".":""));aimedX=0;finishMode();mode="target";$("mode").textContent="Select target";draw();scheduleSave();return;
+}
+if(mode==="wall"){selectWall(p);return}if(mode==="target"){aimedX=0;for(let i=1;i<=5;i++)$("aimX"+i).classList.remove("active")}let placed=mode,snapMessage="";
+if((mode==="A"||mode==="B")&&$("stationSnap").checked){let hit=snapStation(p);if(!hit){status("No DXF geometry within "+num("snap")+" ft. Zoom closer, increase snap radius, or disable A/B snapping to place freely.");return}p=hit.point;snapMessage=" • snapped to "+hit.kind;}
+if(mode==="A"){set("ax",p.x);set("ay",p.y)}else if(mode==="B"){set("bx",p.x);set("by",p.y)}else{p=closest(p);set("tx",p.x);set("ty",p.y)}mode="target";finishMode();$("mode").textContent="Select target";cv.style.cursor="crosshair";status(`${placed==="A"?"Station A":placed==="B"?"Station B":"Target"} placed at X ${p.x.toFixed(3)}, Y ${p.y.toFixed(3)} ft${snapMessage}.`);draw();scheduleSave()}
+function canvasPos(e){let r=cv.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}
+// Tap and drag are distinct: slight finger/mouse movement must not cancel placement.
+const TAP_TOLERANCE=10;
+cv.addEventListener("pointerdown",e=>{cv.setPointerCapture(e.pointerId);let p=canvasPos(e);touches.set(e.pointerId,p);if(touches.size===1){drag={start:p,last:p,originX:ox,originY:oy};dragged=false}else if(touches.size===2){let v=[...touches.values()];pinch={distance:Math.hypot(v[0].x-v[1].x,v[0].y-v[1].y),scale};dragged=true}});
+cv.addEventListener("pointermove",e=>{if(!touches.has(e.pointerId))return;let p=canvasPos(e);touches.set(e.pointerId,p);if(touches.size===2&&pinch){let v=[...touches.values()],d=Math.hypot(v[0].x-v[1].x,v[0].y-v[1].y),mid={x:(v[0].x+v[1].x)/2,y:(v[0].y+v[1].y)/2},wp=world(mid.x,mid.y);scale=Math.max(.1,Math.min(3000,pinch.scale*d/Math.max(1,pinch.distance)));ox=mid.x-wp.x*scale;oy=mid.y+wp.y*scale;dragged=true;draw()}else if(drag){let dx=p.x-drag.start.x,dy=p.y-drag.start.y;if(Math.hypot(dx,dy)>TAP_TOLERANCE)dragged=true;if(dragged){ox=drag.originX+dx;oy=drag.originY+dy;draw()}}});
+cv.addEventListener("pointerup",e=>{let p=canvasPos(e);if(drag&&touches.size===1&&!dragged&&Math.hypot(p.x-drag.start.x,p.y-drag.start.y)<=TAP_TOLERANCE)choose(world(p.x,p.y));touches.delete(e.pointerId);drag=null;pinch=null;scheduleSave()});
+cv.addEventListener("pointercancel",e=>{touches.delete(e.pointerId);drag=null;pinch=null});
+cv.addEventListener("wheel",e=>{e.preventDefault();let p=canvasPos(e),wp=world(p.x,p.y);scale=Math.max(.1,Math.min(3000,scale*(e.deltaY<0?1.12:1/1.12)));ox=p.x-wp.x*scale;oy=p.y+wp.y*scale;draw();scheduleSave()},{passive:false});
+["ax","ay","bx","by","tx","ty","measuredAB","baselineTol","zeroA","zeroB","directionA","directionB"].forEach(id=>$(id).addEventListener("input",()=>{draw();scheduleSave()}));
+$("scalePoint1").onclick=()=>{if(scaleLocked){status("Scale is locked. Unlock Scale before changing calibration points.");return}activateButton("scalePoint1");aimedX=0;$("aimX1").classList.remove("active");$("aimX2").classList.remove("active");mode="scaleP1";$("mode").textContent="Set CAL 1";status("CAL 1 ACTIVE — tap the first endpoint of a known drawing dimension.")};
+$("scalePoint2").onclick=()=>{if(scaleLocked){status("Scale is locked. Unlock Scale before changing calibration points.");return}if(!scaleP1){status("Select dimension point 1 first.");return}activateButton("scalePoint2");aimedX=0;$("aimX1").classList.remove("active");$("aimX2").classList.remove("active");mode="scaleP2";$("mode").textContent="Set CAL 2";status("CAL 2 ACTIVE — tap the other endpoint of the known drawing dimension.")};
+$("layoutPoint1").onclick=()=>{activateButton("layoutPoint1");mode="layoutP1";$("mode").textContent="Set layout X1";status("LAYOUT X1 ACTIVE — tap the DXF coordinate you want to lay out.")};
+$("layoutPoint2").onclick=()=>{activateButton("layoutPoint2");mode="layoutP2";$("mode").textContent="Set layout X2";status("LAYOUT X2 ACTIVE — tap the DXF coordinate you want to lay out.")};
+$("layoutPoint3").onclick=()=>{activateButton("layoutPoint3");mode="layoutP3";$("mode").textContent="Set layout X3";status("LAYOUT X3 ACTIVE — tap the DXF coordinate you want to lay out.")};
+$("layoutPoint4").onclick=()=>{activateButton("layoutPoint4");mode="layoutP4";$("mode").textContent="Set layout X4";status("LAYOUT X4 ACTIVE — tap the DXF coordinate you want to lay out.")};
+$("layoutPoint5").onclick=()=>{activateButton("layoutPoint5");mode="layoutP5";$("mode").textContent="Set layout X5";status("LAYOUT X5 ACTIVE — tap the DXF coordinate you want to lay out.")};
+$("applyDrawingScale").onclick=()=>{if(scaleLocked){status("Scale is already locked. Unlock it before recalibrating.");return}if(!scaleP1||!scaleP2){status("Select both dimension endpoints first.");return}let known=num("knownLength"),actual=Math.hypot(scaleP2.x-scaleP1.x,scaleP2.y-scaleP1.y);if(!Number.isFinite(known)||known<=0||actual<=0){status("Enter a positive known length in feet.");return}let ratio=known/actual;if(!Number.isFinite(ratio)||ratio<=0||ratio>1e6||ratio<1e-6){status("Scale correction is outside supported range. Check units and selected points.");return}rescaleProject(ratio);scaleVerified=true;scaleLocked=true;updateDrawingScaleStatus();status("Scale corrected by ×"+ratio.toFixed(6)+" and LOCKED. Unlock Scale before any recalibration.");scheduleSave()};
+$("scaleLock").onclick=()=>{
+  if(scaleLocked){
+    if(!confirm("Unlock drawing scale? This will allow the calibration points and scale correction to be changed."))return;
+    scaleLocked=false;updateDrawingScaleStatus();status("Scale UNLOCKED. Calibration can now be changed.");scheduleSave();
+  }else{
+    if(!scaleVerified){status("Apply and verify the DXF scale first. ATLAS will lock it automatically.");return}
+    scaleLocked=true;updateDrawingScaleStatus();status("Scale LOCKED.");scheduleSave();
+  }
+};
+$("resetDrawingScale").onclick=()=>{if(scaleLocked){status("Scale is locked. Unlock Scale before resetting it.");return}if(projectKind!=="dxf"||!currentDXFText){status("Load a DXF to reset its scale.");return}if(!confirm("Reset DXF geometry to selected drawing units? Stations and target will be scaled with it."))return;rescaleProject(1/drawingScaleFactor);drawingScaleFactor=1;scaleVerified=false;scaleP1=null;scaleP2=null;updateDrawingScaleStatus();status("Scale correction reset. Select a known dimension to verify.");scheduleSave()};
+$("cancelScale").onclick=()=>{finishMode();mode="target";$("mode").textContent="Select target";status("Point selection canceled.")};
+function aimAtX(n){
+  let target=layoutPoint(n);if(!target){status("Set X"+n+" first.");return}
+  aimedX=n;clearActiveButtons();
+  for(let i=1;i<=5;i++)$("aimX"+i).classList.toggle("active",i===n);
+  $("mode").textContent="Tape intersection → X"+n;draw();scheduleSave();
+  status("TAPE LAYOUT X"+n+" — pull Tape A and Tape B to the displayed distances; their intersection locates X"+n+".");
+}
+for(let n=1;n<=5;n++)$("aimX"+n).onclick=()=>aimAtX(n);
+$("nextX").onclick=()=>{
+  let set=[];for(let n=1;n<=5;n++)if(layoutPoint(n))set.push(n);
+  if(!set.length){status("Set at least one layout X first.");return}
+  let i=set.indexOf(aimedX),next=set[(i+1+set.length)%set.length];aimAtX(next);
+};
+$("clearTargets").onclick=()=>{aimedX=0;for(let i=1;i<=5;i++)$("aimX"+i).classList.remove("active");layoutP1=layoutP2=layoutP3=layoutP4=layoutP5=null;mode="target";$("mode").textContent="Select target";draw();scheduleSave();status("Layout X1–X5 cleared. DXF calibration was not changed.");};
+$("refA").onclick=()=>{activateButton("refA");mode="refA";$("mode").textContent="Tap A reference";status("Tap a known drawing point visible from physical station A.")};
+$("refB").onclick=()=>{activateButton("refB");mode="refB";$("mode").textContent="Tap B reference";status("Tap a known drawing point visible from physical station B.")};
+$("stationSnap").addEventListener("change",scheduleSave);$("stationSnapType").addEventListener("change",scheduleSave);
+$("placeA").onclick=()=>{activateButton("placeA");mode="A";$("mode").textContent="Tap to place A";cv.style.cursor="crosshair";status("PLACE A ACTIVE — tap once on the drawing. Small finger movement is OK.")};$("placeB").onclick=()=>{activateButton("placeB");mode="B";$("mode").textContent="Tap to place B";cv.style.cursor="crosshair";status("PLACE B ACTIVE — tap once on the drawing. Small finger movement is OK.")};
+$("wallMode").onclick=()=>{activateButton("wallMode");mode="wall";$("mode").textContent="Tap a wall line";status("WALL MODE — zoom in, then tap a DXF line.")};
+$("next").onclick=()=>{if(wallIndex<wallPoints.length-1){wallIndex++;goWall();scheduleSave()}};
+$("previous").onclick=()=>{if(wallIndex>0){wallIndex--;goWall();scheduleSave()}};
+$("reverse").onclick=()=>{if(selectedWall){selectedWall={a:selectedWall.b,b:selectedWall.a};makeWall();scheduleSave()}};
+$("spacing").onchange=()=>{if(selectedWall)makeWall();scheduleSave()};
+$("center").onclick=fit;
+$("clear").onclick=()=>{segments=[];points=[];selectedWall=null;wallPoints=[];currentDXFText=null;currentDXFName="";projectKind="blank";drawingScaleFactor=1;scaleVerified=false;scaleLocked=false;scaleP1=null;scaleP2=null;layoutP1=null;layoutP2=null;layoutP3=null;layoutP4=null;layoutP5=null;aimedX=0;updateDrawingScaleStatus();status("Drawing cleared.");fit();scheduleSave()};
+function loadDemo(doSave=true){segments=[[[0,0],[40,0]],[[40,0],[40,30]],[[40,30],[0,30]],[[0,30],[0,0]],[[5,5],[35,5]],[[35,5],[35,25]],[[35,25],[5,25]],[[5,25],[5,5]],[[18,5],[18,25]],[[22,5],[22,25]]].map(([a,b])=>({a:{x:a[0],y:a[1]},b:{x:b[0],y:b[1]}}));points=[];selectedWall=null;wallPoints=[];currentDXFText=null;currentDXFName="";projectKind="demo";drawingScaleFactor=1;scaleVerified=false;scaleLocked=false;scaleP1=null;scaleP2=null;layoutP1=null;layoutP2=null;layoutP3=null;layoutP4=null;layoutP5=null;aimedX=0;updateDrawingScaleStatus();status("Demo loaded: 40 × 30 ft outline and interior walls.");fit();if(doSave)scheduleSave()}
+$("demo").onclick=()=>loadDemo(true);
+$("saveNow").onclick=()=>saveProject(true);
+$("newProject").onclick=async()=>{if(!confirm("Clear the saved ATLAS project from this iPad and return to demo walls?"))return;try{clearTimeout(saveTimer);await idbDelete();zeroSetA=false;zeroSetB=false;$("measuredAB").value="";$("zeroA").value=0;$("zeroB").value=0;loadDemo(false);$("saveState").textContent="Saved project cleared • demo only";status("Saved project cleared. Demo walls loaded.")}catch(err){status("Could not clear saved project: "+err.message)}};
+$("units").addEventListener("change",()=>{status("Units changed. Reload the DXF to apply the new units; saved geometry remains unchanged until reloaded.");scheduleSave()});
+function parseDXF(src,factor){let raw=src.replace(/\r/g,"").split("\n"),pairs=[];for(let i=0;i+1<raw.length;i+=2)pairs.push([raw[i].trim(),raw[i+1].trim()]);
+let seg=[],pts=[],inEntities=false,ignored=0;function entity(type,fields){let get=k=>{let a=fields.find(v=>v[0]===String(k));return a?Number(a[1]):0};let xy=(x,y)=>({x:x*factor,y:y*factor});
+if(type==="LINE"){seg.push({a:xy(get(10),get(20)),b:xy(get(11),get(21))})}
+else if(type==="POINT"){pts.push(xy(get(10),get(20)))}
+else if(type==="LWPOLYLINE"){let verts=[],x=null;for(let [k,v] of fields){if(k==="10"){x=Number(v)}if(k==="20"&&x!==null){verts.push(xy(x,Number(v)));x=null}}for(let i=1;i<verts.length;i++)seg.push({a:verts[i-1],b:verts[i]});if((get(70)&1)&&verts.length>2)seg.push({a:verts.at(-1),b:verts[0]})}
+else ignored++}
+let type=null,fields=[],section="";for(let i=0;i<pairs.length;i++){let [k,v]=pairs[i];if(k==="0"&&v==="SECTION"){section=pairs[i+1]?.[1]==="2"?pairs[i+1]?.[1]:"";continue}if(k==="2"&&pairs[i-1]?.[1]==="SECTION"){inEntities=v==="ENTITIES";continue}if(k==="0"&&v==="ENDSEC"){if(type&&inEntities)entity(type,fields);type=null;fields=[];inEntities=false;continue}if(!inEntities)continue;if(k==="0"){if(type)entity(type,fields);type=v;fields=[]}else if(type)fields.push([k,v])}
+if(type&&inEntities)entity(type,fields);return{seg,pts,ignored}}
+$("file").addEventListener("change",async e=>{let f=e.target.files[0];if(!f)return;try{let src=await f.text(),r=parseDXF(src,num("units"));if(!r.seg.length&&!r.pts.length)throw Error("No supported entities found. Export an ASCII DXF with LINE / LWPOLYLINE / POINT entities.");segments=r.seg;points=r.pts;selectedWall=null;wallPoints=[];currentDXFText=src;currentDXFName=f.name;projectKind="dxf";drawingScaleFactor=1;scaleVerified=false;scaleLocked=false;scaleP1=null;scaleP2=null;layoutP1=null;layoutP2=null;layoutP3=null;layoutP4=null;layoutP5=null;aimedX=0;updateDrawingScaleStatus();status(`Loaded ${f.name}: ${segments.length} segments, ${points.length} points; ${r.ignored} unsupported entities skipped.`);fit();await saveProject(false)}catch(err){status("DXF error: "+err.message)}});
+(async()=>{try{new ResizeObserver(size).observe(cv);let saved=null;try{saved=await idbGet()}catch(e){$("saveState").textContent="Local recovery unavailable: "+e.message}if(saved)await restoreProject(saved);else{loadDemo(false);$("saveState").textContent="No saved project yet • changes will auto-save locally";status("Demo loaded — import a DXF and ATLAS will recover it after Safari reloads.")}}catch(err){status("STARTUP ERROR: "+err.message)}})();
+window.addEventListener("pagehide",()=>{saveProject(false)});
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")saveProject(false)});
+</script></body></html>
