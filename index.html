@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ATLAS Tape Layout — Prototype 06 — Stable Full Screen</title>
+<title>ATLAS Tape Layout — Prototype 07 — Large DXF Performance</title>
 <style>
 :root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#eaf1fb;background:#101827}
 *{box-sizing:border-box}body{margin:0}header{padding:18px 22px;background:#17243a;border-bottom:1px solid #344761}h1{margin:0;font-size:23px}small,.hint{color:#a9bed5}main{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;padding:16px}.panel{background:#19283c;border:1px solid #354861;border-radius:12px;padding:16px}h2{font-size:16px;margin:0 0 12px}h3{font-size:14px;margin:18px 0 8px;color:#c3d9f2}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}label{display:block;font-size:12px;color:#b9cde4}input,select,button{width:100%;border:1px solid #506782;border-radius:7px;background:#101d2e;color:white;padding:10px;font:inherit}input[type=file]{font-size:12px}button{background:#2a5b86;cursor:pointer}button:hover{background:#3677aa}button.active{background:#16866f;border-color:#72f0cf;box-shadow:0 0 0 2px rgba(114,240,207,.22) inset}button.active::after{content:"  • TAP";font-weight:800}button.selected{background:#176b63;border-color:#72f0cf;box-shadow:0 0 0 2px rgba(114,240,207,.16) inset}button.selected::after{content:"  ✓ SELECTED";font-weight:800}button.secondary{background:#293b50}.wide{grid-column:1/-1}.viewerHead{display:flex;align-items:center;justify-content:space-between;gap:10px}.viewerHead h2{margin:0}.viewerHead button{width:auto;min-width:116px;padding:8px 12px}#viewPanel:fullscreen{background:#101827;border:0;border-radius:0;padding:14px;width:100vw;height:100vh}#viewPanel:fullscreen canvas{height:calc(100vh - 180px);min-height:0}.fullscreen-fallback{position:fixed!important;inset:0!important;z-index:9999!important;width:100vw!important;height:100vh!important;margin:0!important;border-radius:0!important;border:0!important;background:#101827!important;padding:14px!important;overflow:auto!important}.fullscreen-fallback canvas{height:calc(100vh - 180px)!important;min-height:320px!important}canvas{width:100%;height:min(69vh,780px);min-height:430px;display:block;background:#0c1522;border-radius:8px;touch-action:none}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}.stat{background:#102033;border-radius:8px;padding:12px;font-size:13px;overflow-wrap:anywhere}.stat b{display:block;color:#8ee5ef;margin-top:5px;font-size:16px}.status{margin-top:10px;color:#e7c98c;font-size:13px;min-height:35px}.pill{display:inline-block;border-radius:5px;padding:4px 8px;background:#304761;margin:4px 3px 4px 0;font-size:12px}.note{font-size:12px;line-height:1.5;color:#b4c8dc}@media(max-width:850px){main{grid-template-columns:1fr}.stats{grid-template-columns:1fr}canvas{height:55vh;min-height:350px}}
 </style></head>
-<body><header><h1>ATLAS <span style="color:#67d9e6">TAPE LAYOUT</span> <small> / Prototype 06 — stable + full screen</small></h1><small>Local-only DXF preview • Two tape stations • Trilateration distances • No laser hardware required</small></header>
+<body><header><h1>ATLAS <span style="color:#67d9e6">TAPE LAYOUT</span> <small> / Prototype 07 — large DXF performance</small></h1><small>Local-only DXF preview • Two tape stations • Trilateration distances • No laser hardware required</small></header>
 <main><section class="panel">
 <h2>1. Drawing</h2>
 <label>DXF file (ASCII DXF; LINE, LWPOLYLINE, POINT)</label><input id="file" type="file" accept=".dxf">
@@ -95,6 +95,8 @@ fullscreenBtn.addEventListener("click",toggleFullscreen);
 document.addEventListener("fullscreenchange",()=>{updateFullscreenButton();setTimeout(()=>{size();draw()},30)});
 document.addEventListener("webkitfullscreenchange",()=>{updateFullscreenButton();setTimeout(()=>{size();draw()},30)});
 let selectedWall=null,wallPoints=[],wallIndex=0,segments=[],points=[],mode="target",scale=16,ox=0,oy=0,drag=null,dragged=false,touches=new Map(),pinch=null;
+let drawQueued=false,visibleSegmentScratch=[],visiblePointScratch=[];
+function requestDraw(){if(drawQueued)return;drawQueued=true;requestAnimationFrame(()=>{drawQueued=false;draw()})}
 let currentDXFText=null,currentDXFName="",projectKind="demo",restoring=false,saveTimer=null;
 let drawingScaleFactor=1,scaleP1=null,scaleP2=null,layoutP1=null,layoutP2=null,layoutP3=null,layoutP4=null,layoutP5=null,scaleVerified=false,scaleLocked=false,aimedX=0;
 let shiftOrtho=false;
@@ -169,6 +171,37 @@ function size(){let r=cv.getBoundingClientRect(),d=Math.min(window.devicePixelRa
 function fit(){let minx=Infinity,maxx=-Infinity,miny=Infinity,maxy=-Infinity;function add(p){if(!p)return;minx=Math.min(minx,p.x);maxx=Math.max(maxx,p.x);miny=Math.min(miny,p.y);maxy=Math.max(maxy,p.y)}[A(),B(),T()].forEach(add);for(let s of segments){add(s.a);add(s.b)}for(let p of points)add(p);let w=cv.clientWidth,h=cv.clientHeight,pad=48;scale=Math.max(.01,Math.min((w-2*pad)/Math.max(maxx-minx,5),(h-2*pad)/Math.max(maxy-miny,5)));ox=w/2-(minx+maxx)/2*scale;oy=h/2+(miny+maxy)/2*scale;draw();scheduleSave()}
 function line(p,q,color,width=1,dash=[]){let a=screen(p),b=screen(q);ctx.beginPath();ctx.setLineDash(dash);ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=color;ctx.lineWidth=width;ctx.stroke();ctx.setLineDash([])}
 function mark(p,label,color){let s=screen(p);ctx.beginPath();ctx.arc(s.x,s.y,6,0,2*Math.PI);ctx.fillStyle=color;ctx.fill();ctx.font="bold 13px system-ui";ctx.fillText(label,s.x+9,s.y-9)}
+function drawDXFGeometry(loX,hiX,loY,hiY){
+  // Large-DXF renderer: cull outside the viewport, then batch visible lines into a few strokes.
+  // When zoomed far out, sub-pixel details are intentionally omitted because they cannot be seen anyway.
+  visibleSegmentScratch.length=0;
+  let minPixelLen=scale<.18?1.6:scale<.4?1.15:scale<.8?.75:0;
+  for(let i=0;i<segments.length;i++){
+    let s=segments[i];
+    if(Math.max(s.a.x,s.b.x)<loX||Math.min(s.a.x,s.b.x)>hiX||Math.max(s.a.y,s.b.y)<loY||Math.min(s.a.y,s.b.y)>hiY)continue;
+    if(minPixelLen&&Math.abs(s.b.x-s.a.x)*scale<minPixelLen&&Math.abs(s.b.y-s.a.y)*scale<minPixelLen)continue;
+    visibleSegmentScratch.push(s);
+  }
+  // At extreme zoom-out, cap only the background DXF detail. Zooming in restores every visible line.
+  let cap=scale<.18?18000:scale<.4?28000:scale<.8?45000:90000;
+  let step=visibleSegmentScratch.length>cap?visibleSegmentScratch.length/cap:1;
+  ctx.save();ctx.strokeStyle="#a7b8cc";ctx.lineWidth=1.4;ctx.setLineDash([]);
+  ctx.beginPath();
+  let drawn=0,batch=0;
+  for(let k=0;k<visibleSegmentScratch.length;k+=step){
+    let s=visibleSegmentScratch[Math.floor(k)],a=screen(s.a),b=screen(s.b);
+    ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);drawn++;batch++;
+    // Keep individual canvas paths bounded; very large paths can spike memory on mobile Safari.
+    if(batch>=8000){ctx.stroke();ctx.beginPath();batch=0}
+  }
+  if(batch)ctx.stroke();ctx.restore();
+
+  visiblePointScratch.length=0;
+  for(let p of points)if(p.x>=loX&&p.x<=hiX&&p.y>=loY&&p.y<=hiY)visiblePointScratch.push(p);
+  let pointCap=scale<.5?1200:5000,pointStep=visiblePointScratch.length>pointCap?visiblePointScratch.length/pointCap:1;
+  if(visiblePointScratch.length){ctx.save();ctx.fillStyle="#9ab2c9";ctx.beginPath();for(let k=0;k<visiblePointScratch.length;k+=pointStep){let p=screen(visiblePointScratch[Math.floor(k)]);ctx.moveTo(p.x+2.2,p.y);ctx.arc(p.x,p.y,2.2,0,2*Math.PI)}ctx.fill();ctx.restore()}
+  return {visible:visibleSegmentScratch.length,drawn};
+}
 function calibration(){
 let a=A(),b=B(),baseline=Math.hypot(b.x-a.x,b.y-a.y),entry=$("measuredAB").value.trim(),measured=num("measuredAB"),tol=num("baselineTol");
 $("baselineCheck").textContent=!entry?"Drawing A–B: "+ftIn(baseline)+" • Enter tape-measured A–B to compare.":(!Number.isFinite(measured)||measured<=0||!Number.isFinite(tol)||tol<0?"Enter a positive measured baseline and nonnegative tolerance.":"Drawing A–B: "+ftIn(baseline)+" • Measured: "+ftIn(measured)+" • Difference: "+ftIn(Math.abs(baseline-measured))+" • "+(Math.abs(baseline-measured)<=tol?"WITHIN entered tolerance":"OUTSIDE tolerance — check DXF units and station locations"));
@@ -178,8 +211,7 @@ let x0=Math.floor(world(0,0).x/5)*5,x1=Math.ceil(world(w,0).x/5)*5,y0=Math.floor
 if((x1-x0)/5<300&&(y1-y0)/5<300){for(let x=x0;x<=x1;x+=5)line({x,y:y0},{x,y:y1},"#223347");for(let y=y0;y<=y1;y+=5)line({x:x0,y},{x:x1,y},"#223347")}
 line({x:x0,y:0},{x:x1,y:0},"#45627a");line({x:0,y:y0},{x:0,y:y1},"#45627a");
 let loX=world(0,0).x,hiX=world(w,0).x,loY=world(0,h).y,hiY=world(0,0).y;
-for(let s of segments){if(Math.max(s.a.x,s.b.x)<loX||Math.min(s.a.x,s.b.x)>hiX||Math.max(s.a.y,s.b.y)<loY||Math.min(s.a.y,s.b.y)>hiY)continue;line(s.a,s.b,"#a7b8cc",1.4)}
-for(let p of points){if(p.x>=loX&&p.x<=hiX&&p.y>=loY&&p.y<=hiY)mark(p,"","#9ab2c9")}
+drawDXFGeometry(loX,hiX,loY,hiY);
 if(selectedWall){line(selectedWall.a,selectedWall.b,"#55ef9b",3);wallPoints.forEach((p,i)=>mark(p,String(i+1),i===wallIndex?"#ff6687":"#55ef9b"))}
 if(scaleP1)mark(scaleP1,"CAL1","#ffe66d");if(scaleP2){line(scaleP1,scaleP2,"#ffe66d",1.8,[6,5]);mark(scaleP2,"CAL2","#ffe66d");let aa=screen(scaleP1),bb=screen(scaleP2),mx=(aa.x+bb.x)/2,my=(aa.y+bb.y)/2,label="CAL "+ftIn(Math.hypot(scaleP2.x-scaleP1.x,scaleP2.y-scaleP1.y));ctx.save();ctx.font="bold 13px system-ui";let tw=ctx.measureText(label).width;ctx.fillStyle="#0c1522";ctx.fillRect(mx-tw/2-6,my-19,tw+12,24);ctx.fillStyle="#ffe66d";ctx.textAlign="center";ctx.fillText(label,mx,my-2);ctx.restore()}
 if(layoutP1)mark(layoutP1,"X1","#ff6687");
@@ -292,10 +324,10 @@ function canvasPos(e){let r=cv.getBoundingClientRect();return{x:e.clientX-r.left
 // Tap and drag are distinct: slight finger/mouse movement must not cancel placement.
 const TAP_TOLERANCE=10;
 cv.addEventListener("pointerdown",e=>{cv.setPointerCapture(e.pointerId);let p=canvasPos(e);touches.set(e.pointerId,p);if(touches.size===1){drag={start:p,last:p,originX:ox,originY:oy};dragged=false}else if(touches.size===2){let v=[...touches.values()];pinch={distance:Math.hypot(v[0].x-v[1].x,v[0].y-v[1].y),scale};dragged=true}});
-cv.addEventListener("pointermove",e=>{if(!touches.has(e.pointerId))return;let p=canvasPos(e);touches.set(e.pointerId,p);if(touches.size===2&&pinch){let v=[...touches.values()],d=Math.hypot(v[0].x-v[1].x,v[0].y-v[1].y),mid={x:(v[0].x+v[1].x)/2,y:(v[0].y+v[1].y)/2},wp=world(mid.x,mid.y);scale=Math.max(.1,Math.min(3000,pinch.scale*d/Math.max(1,pinch.distance)));ox=mid.x-wp.x*scale;oy=mid.y+wp.y*scale;dragged=true;draw()}else if(drag){let dx=p.x-drag.start.x,dy=p.y-drag.start.y;if(Math.hypot(dx,dy)>TAP_TOLERANCE)dragged=true;if(dragged){ox=drag.originX+dx;oy=drag.originY+dy;draw()}}});
+cv.addEventListener("pointermove",e=>{if(!touches.has(e.pointerId))return;let p=canvasPos(e);touches.set(e.pointerId,p);if(touches.size===2&&pinch){let v=[...touches.values()],d=Math.hypot(v[0].x-v[1].x,v[0].y-v[1].y),mid={x:(v[0].x+v[1].x)/2,y:(v[0].y+v[1].y)/2},wp=world(mid.x,mid.y);scale=Math.max(.1,Math.min(3000,pinch.scale*d/Math.max(1,pinch.distance)));ox=mid.x-wp.x*scale;oy=mid.y+wp.y*scale;dragged=true;requestDraw()}else if(drag){let dx=p.x-drag.start.x,dy=p.y-drag.start.y;if(Math.hypot(dx,dy)>TAP_TOLERANCE)dragged=true;if(dragged){ox=drag.originX+dx;oy=drag.originY+dy;requestDraw()}}});
 cv.addEventListener("pointerup",e=>{let p=canvasPos(e);if(drag&&touches.size===1&&!dragged&&Math.hypot(p.x-drag.start.x,p.y-drag.start.y)<=TAP_TOLERANCE)choose(world(p.x,p.y));touches.delete(e.pointerId);drag=null;pinch=null;scheduleSave()});
 cv.addEventListener("pointercancel",e=>{touches.delete(e.pointerId);drag=null;pinch=null});
-cv.addEventListener("wheel",e=>{e.preventDefault();let p=canvasPos(e),wp=world(p.x,p.y);scale=Math.max(.1,Math.min(3000,scale*(e.deltaY<0?1.12:1/1.12)));ox=p.x-wp.x*scale;oy=p.y+wp.y*scale;draw();scheduleSave()},{passive:false});
+cv.addEventListener("wheel",e=>{e.preventDefault();let p=canvasPos(e),wp=world(p.x,p.y);scale=Math.max(.1,Math.min(3000,scale*(e.deltaY<0?1.12:1/1.12)));ox=p.x-wp.x*scale;oy=p.y+wp.y*scale;requestDraw();scheduleSave()},{passive:false});
 ["ax","ay","bx","by","tx","ty","measuredAB","baselineTol"].forEach(id=>$(id).addEventListener("input",()=>{draw();scheduleSave()}));
 $("scalePoint1").onclick=()=>{if(scaleLocked){status("Scale is locked. Unlock Scale before changing calibration points.");return}activateButton("scalePoint1");aimedX=0;$("aimX1").classList.remove("active");$("aimX2").classList.remove("active");mode="scaleP1";$("mode").textContent="Set CAL 1";status("CAL 1 ACTIVE — tap the first endpoint of a known drawing dimension.")};
 $("scalePoint2").onclick=()=>{if(scaleLocked){status("Scale is locked. Unlock Scale before changing calibration points.");return}if(!scaleP1){status("Select dimension point 1 first.");return}activateButton("scalePoint2");aimedX=0;$("aimX1").classList.remove("active");$("aimX2").classList.remove("active");mode="scaleP2";$("mode").textContent="Set CAL 2";status("CAL 2 ACTIVE — tap the other endpoint of the known drawing dimension.")};
